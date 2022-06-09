@@ -2,30 +2,30 @@ package main
 
 import (
 	"context"
-	"github.com/rs/zerolog"
-	"go.uber.org/fx"
-	"log"
+	"net"
 	"net/http"
-	"os"
+	"time"
+
+	"github.com/rs/zerolog/log"
+	"go.uber.org/fx"
 	"serenitylabs.cloud/slapi"
 	"serenitylabs.cloud/slapi/pkg/api"
 	"serenitylabs.cloud/slapi/pkg/fxutil"
-	"serenitylabs.cloud/slapi/pkg/ghinternal"
 )
 
 func main() {
-	log.SetOutput(zerolog.ConsoleWriter{Out: os.Stderr})
+	opts := make([]fx.Option, 0)
 
-	app := fx.New(
-		fx.Provide(
-			slapi.NewRouter,
-			api.GetDefaultConfig,
-			ghinternal.Provider,
-		),
+	opts = append(opts,
+		fx.Provide(slapi.New),
+		fx.Provide(api.GetDefaultConfig),
 		fx.Invoke(SetupServer),
 		fx.WithLogger(fxutil.NewLogger),
 	)
 
+	app := fx.New(
+		opts...,
+	)
 	if app.Err() != nil {
 		panic(app.Err())
 	}
@@ -33,18 +33,33 @@ func main() {
 	app.Run()
 }
 
-func SetupServer(lc fx.Lifecycle, router *slapi.Core, config *api.Config) *http.Server {
+func SetupServer(lc fx.Lifecycle, shutdown fx.Shutdowner, router *slapi.Core, config *api.Config) *http.Server {
 	server := &http.Server{
 		Handler: router,
 		Addr:    config.ListenAddr,
+
+		ReadHeaderTimeout: time.Second * 5,
+		ReadTimeout:       time.Minute,
+		IdleTimeout:       time.Minute,
 	}
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			go func() {
-				err := server.ListenAndServe()
+				listener, err := net.Listen("tcp", config.ListenAddr)
 				if err != nil && err != http.ErrServerClosed {
-					panic(err)
+					log.Error().Err(err).Send()
+					shutdown.Shutdown()
+				}
+
+				addr := listener.Addr().(*net.TCPAddr)
+
+				log.Info().Int("port", addr.Port).Str("ip", addr.IP.String()).Msg("listening")
+
+				err = server.Serve(listener)
+				if err != nil && err != http.ErrServerClosed {
+					log.Error().Err(err).Send()
+					shutdown.Shutdown()
 				}
 			}()
 			return nil

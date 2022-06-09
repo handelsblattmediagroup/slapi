@@ -7,6 +7,8 @@ import (
 	"os"
 	"time"
 
+	"serenitylabs.cloud/slapi/pkg/ginutil"
+
 	"github.com/rs/zerolog/log"
 	"serenitylabs.cloud/slapi/pkg/api"
 
@@ -22,7 +24,7 @@ type Core struct {
 	log zerolog.Logger
 }
 
-func NewRouter(routers api.CoreIn) *Core {
+func New(routers api.CoreIn) *Core {
 	gin.SetMode(gin.ReleaseMode)
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	core := &Core{
@@ -51,7 +53,7 @@ func NewRouter(routers api.CoreIn) *Core {
 
 	core.Use(requestid.New())
 	core.Use(ginlogger.SetLogger(logger))
-	core.Use(ErrorHandler())
+	core.Use(ginutil.ErrorHandler())
 
 	corsConfig := cors.DefaultConfig()
 	corsConfig.AllowCredentials = true
@@ -71,32 +73,9 @@ func NewRouter(routers api.CoreIn) *Core {
 		prefix := fmt.Sprintf("/v%d/%s/", router.Version, router.Prefix)
 		core.log.Info().Str("prefix", prefix).Msg("registering router prefix")
 		group := core.Group(prefix)
-		group.Use(AnnotateRouter(router))
+		group.Use(ginutil.AnnotateRouter(router))
 		router.RegisterRouter(group)
 	}
 
 	return core
-}
-
-func AnnotateRouter(vrs *api.VersionedRouterSpec) gin.HandlerFunc {
-	version, prefix := vrs.Version, vrs.Prefix
-	return func(c *gin.Context) {
-		c.Set("slapi.router_version", version)
-		c.Set("slapi.router_name", prefix)
-	}
-}
-
-func ErrorHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Next()
-
-		err := c.Errors.Last()
-		if err == nil {
-			return
-		}
-
-		c.JSON(http.StatusInternalServerError, struct {
-			Err string `json:"err"`
-		}{Err: err.Error()})
-	}
 }

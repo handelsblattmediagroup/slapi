@@ -1,9 +1,10 @@
 package fxutil
 
 import (
+	"reflect"
+
 	"github.com/rs/zerolog/log"
 	"go.uber.org/fx/fxevent"
-	"reflect"
 )
 
 func NewLogger() fxevent.Logger {

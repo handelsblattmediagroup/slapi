@@ -1,11 +1,13 @@
 package ghinternal
 
 import (
+	"context"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/go-github/v43/github"
 	"github.com/palantir/go-githubapp/githubapp"
 	"github.com/rs/zerolog/log"
-	"net/http"
 	"serenitylabs.cloud/slapi/pkg/api"
 )
 
@@ -19,7 +21,17 @@ func Provider(config *api.Config) (api.VersionedRouterOut, error) {
 	c.App.PrivateKey = config.Github.PrivateKey
 
 	cc, err := githubapp.NewDefaultCachingClientCreator(c)
+	if err != nil {
+		return api.VersionedRouterOut{}, err
+	}
 
+	appClient, err := cc.NewAppClient()
+	if err != nil {
+		return api.VersionedRouterOut{}, err
+	}
+
+	// test if auth works
+	_, _, err = appClient.Apps.Get(context.Background(), "")
 	if err != nil {
 		return api.VersionedRouterOut{}, err
 	}
