@@ -6,8 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"go.uber.org/fx"
+
+	"github.com/rs/zerolog/log"
 	"serenitylabs.cloud/slapi"
 	"serenitylabs.cloud/slapi/pkg/api"
 	"serenitylabs.cloud/slapi/pkg/fxutil"
