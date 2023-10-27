@@ -38,7 +38,7 @@ func NewTracer(lc fx.Lifecycle) (trace.TracerProvider, error) {
 }
 
 func getTraceExporter() (sdktrace.SpanExporter, error) {
-	tracer := os.Getenv("EOF_OTLP_TRACER")
+	tracer := os.Getenv("SLAPI_OTLP_TRACER")
 	switch tracer {
 	case "grpc":
 		return otlptracegrpc.New(context.Background())
