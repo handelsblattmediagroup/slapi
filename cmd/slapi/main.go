@@ -12,6 +12,7 @@ import (
 	"serenitylabs.cloud/slapi"
 	"serenitylabs.cloud/slapi/pkg/api"
 	"serenitylabs.cloud/slapi/pkg/fxutil"
+	"serenitylabs.cloud/slapi/pkg/otel"
 )
 
 func main() {
@@ -20,6 +21,7 @@ func main() {
 	opts = append(opts,
 		fx.Provide(slapi.New),
 		fx.Provide(api.GetDefaultConfig),
+		fx.Provide(otel.NewTracer),
 		fx.Invoke(SetupServer),
 		fx.WithLogger(fxutil.NewLogger),
 	)

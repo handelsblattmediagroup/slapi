@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 )
 
@@ -15,6 +16,7 @@ type CoreIn struct {
 	fx.In
 
 	VersionedRouter []*VersionedRouterSpec `group:"router"`
+	OtelTracer      trace.TracerProvider
 }
 
 type VersionedRouterOut struct {

@@ -2,11 +2,12 @@ package slapi
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel/trace"
 	"serenitylabs.cloud/slapi/pkg/ginutil"
 
 	"github.com/rs/zerolog/log"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/gin-contrib/cors"
 	ginlogger "github.com/gin-contrib/logger"
-	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 )
@@ -25,6 +25,8 @@ type Core struct {
 }
 
 func New(routers api.CoreIn) *Core {
+	_, inFly := os.LookupEnv("FLY_ALLOC_ID")
+
 	gin.SetMode(gin.ReleaseMode)
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	core := &Core{
@@ -32,10 +34,17 @@ func New(routers api.CoreIn) *Core {
 		log:    log.With().Logger(),
 	}
 
-	logger := ginlogger.WithLogger(func(c *gin.Context, out io.Writer, latency time.Duration) zerolog.Logger {
+	logger := ginlogger.WithLogger(func(c *gin.Context, log zerolog.Logger) zerolog.Logger {
+		start := time.Now().UTC()
+		span := trace.SpanFromContext(c.Request.Context())
+
+		c.Next()
+
+		end := time.Now()
+		latency := end.Sub(start)
 
 		l := core.log.With().
-			Str("id", requestid.Get(c)).
+			Str("trace_id", span.SpanContext().TraceID().String()).
 			Str("path", c.Request.URL.Path).
 			Dur("latency", latency).
 			Str("remote_addr", c.Request.RemoteAddr)
@@ -51,7 +60,7 @@ func New(routers api.CoreIn) *Core {
 		return l.Logger()
 	})
 
-	core.Use(requestid.New())
+	core.Use(otelgin.Middleware("slapi"))
 	core.Use(ginlogger.SetLogger(logger))
 	core.Use(ginutil.ErrorHandler())
 
@@ -60,13 +69,16 @@ func New(routers api.CoreIn) *Core {
 	corsConfig.AllowOrigins = append(corsConfig.AllowOrigins, "https://acuteaura.net")
 	core.Use(cors.New(corsConfig))
 
-	core.RemoteIPHeaders = []string{"Fly-Client-IP"}
+	if inFly {
+		core.RemoteIPHeaders = []string{"Fly-Client-IP"}
+	} else {
+		core.SetTrustedProxies(nil)
+	}
 
 	core.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, struct {
-			Version    string `json:"version"`
-			Allocation string `json:"allocation"`
-		}{"0.0.2", os.Getenv("FLY_ALLOC_ID")})
+			Version string `json:"version"`
+		}{"0.0.2"})
 	})
 
 	for _, router := range routers.VersionedRouter {
