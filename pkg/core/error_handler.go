@@ -1,4 +1,4 @@
-package ginutil
+package core
 
 import (
 	"net/http"

@@ -1,3 +1,7 @@
 /dist
 *.pem
 /.idea
+/.vscode
+/*.sqlite
+/.envrc
+/*.pem

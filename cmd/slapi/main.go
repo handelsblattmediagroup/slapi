@@ -1,76 +1,42 @@
 package main
 
 import (
-	"context"
-	"net"
-	"net/http"
-	"time"
+	"os"
 
-	"go.uber.org/fx"
-
+	"github.com/acuteaura/slapi/pkg/core"
+	"github.com/acuteaura/slapi/pkg/routers/helloworld"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"serenitylabs.cloud/slapi"
-	"serenitylabs.cloud/slapi/pkg/api"
-	"serenitylabs.cloud/slapi/pkg/fxutil"
-	"serenitylabs.cloud/slapi/pkg/otel"
+	"go.uber.org/fx"
+	"golang.org/x/term"
 )
 
 func main() {
+	if term.IsTerminal(int(os.Stderr.Fd())) {
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		log.Info().Msg("detected TTY, using fancy color output")
+	}
+
 	opts := make([]fx.Option, 0)
 
 	opts = append(opts,
-		fx.Provide(slapi.New),
-		fx.Provide(api.GetDefaultConfig),
-		fx.Provide(otel.NewTracer),
-		fx.Invoke(SetupServer),
-		fx.WithLogger(fxutil.NewLogger),
+		fx.WithLogger(core.NewLogger),
+
+		fx.Provide(core.New),
+		fx.Provide(core.GetConfigDefaults),
+		fx.Provide(core.NewTracer),
+
+		fx.Provide(helloworld.Provider),
+
+		fx.Invoke(core.SetupServer),
 	)
 
-	app := fx.New(
+	fxApp := fx.New(
 		opts...,
 	)
-	if app.Err() != nil {
-		panic(app.Err())
+	if fxApp.Err() != nil {
+		panic(fxApp.Err())
 	}
 
-	app.Run()
-}
-
-func SetupServer(lc fx.Lifecycle, shutdown fx.Shutdowner, router *slapi.Core, config *api.Config) *http.Server {
-	server := &http.Server{
-		Handler: router,
-		Addr:    config.ListenAddr,
-
-		ReadHeaderTimeout: time.Second * 5,
-		ReadTimeout:       time.Minute,
-		IdleTimeout:       time.Minute,
-	}
-
-	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			go func() {
-				listener, err := net.Listen("tcp", config.ListenAddr)
-				if err != nil && err != http.ErrServerClosed {
-					log.Error().Err(err).Send()
-					shutdown.Shutdown()
-				}
-
-				addr := listener.Addr().(*net.TCPAddr)
-
-				log.Info().Int("port", addr.Port).Str("ip", addr.IP.String()).Msg("listening")
-
-				err = server.Serve(listener)
-				if err != nil && err != http.ErrServerClosed {
-					log.Error().Err(err).Send()
-					shutdown.Shutdown()
-				}
-			}()
-			return nil
-		},
-		OnStop: func(ctx context.Context) error {
-			return server.Shutdown(ctx)
-		},
-	})
-
-	return server
+	fxApp.Run()
 }

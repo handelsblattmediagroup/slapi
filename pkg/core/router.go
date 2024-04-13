@@ -1,17 +1,17 @@
-package slapi
+package core
 
 import (
 	"fmt"
+	"go.uber.org/fx"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/trace"
-	"serenitylabs.cloud/slapi/pkg/ginutil"
 
 	"github.com/rs/zerolog/log"
-	"serenitylabs.cloud/slapi/pkg/api"
 
 	"github.com/gin-contrib/cors"
 	ginlogger "github.com/gin-contrib/logger"
@@ -19,16 +19,41 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type VersionedRouterSpec struct {
+	Prefix         string
+	Version        uint
+	RegisterRouter func(group *gin.RouterGroup)
+}
+
+type VersionedRouterOut struct {
+	fx.Out
+
+	Router *VersionedRouterSpec `group:"router"`
+}
+
 type Core struct {
 	*gin.Engine
 	log zerolog.Logger
 }
 
-func New(routers api.CoreIn) *Core {
+type In struct {
+	fx.In
+
+	Config          *Config
+	VersionedRouter []*VersionedRouterSpec `group:"router"`
+	OtelTracer      trace.TracerProvider
+}
+
+func New(in In) (*Core, error) {
 	_, inFly := os.LookupEnv("FLY_ALLOC_ID")
 
+	logLevel, err := zerolog.ParseLevel(in.Config.LogLevel)
+	if err != nil {
+		panic("bad log level")
+	}
+	log.Logger = log.Level(logLevel)
+
 	gin.SetMode(gin.ReleaseMode)
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	core := &Core{
 		Engine: gin.New(),
 		log:    log.With().Logger(),
@@ -38,7 +63,7 @@ func New(routers api.CoreIn) *Core {
 		start := time.Now().UTC()
 		span := trace.SpanFromContext(c.Request.Context())
 
-		c.Next()
+		defer c.Next()
 
 		end := time.Now()
 		latency := end.Sub(start)
@@ -49,11 +74,11 @@ func New(routers api.CoreIn) *Core {
 			Dur("latency", latency).
 			Str("remote_addr", c.Request.RemoteAddr)
 
-		if value, ok := c.Get("slapi.router_version"); ok {
+		if value, ok := c.Get(GIN_KV_ROUTER_VERSION_KEY); ok {
 			l = l.Uint("router_version", value.(uint))
 		}
 
-		if value, ok := c.Get("slapi.router_name"); ok {
+		if value, ok := c.Get(GIN_KV_ROUTER_NAME_KEY); ok {
 			l = l.Str("router_name", value.(string))
 		}
 
@@ -62,17 +87,24 @@ func New(routers api.CoreIn) *Core {
 
 	core.Use(otelgin.Middleware("slapi"))
 	core.Use(ginlogger.SetLogger(logger))
-	core.Use(ginutil.ErrorHandler())
+	core.Use(ErrorHandler())
 
-	corsConfig := cors.DefaultConfig()
-	corsConfig.AllowCredentials = true
-	corsConfig.AllowOrigins = append(corsConfig.AllowOrigins, "https://acuteaura.net")
-	core.Use(cors.New(corsConfig))
+	if in.Config.AllowdOrigins != "" {
+		corsConfig := cors.DefaultConfig()
+		corsConfig.AllowCredentials = true
+
+		corsConfig.AllowOrigins = append(corsConfig.AllowOrigins, strings.Split(",", in.Config.AllowdOrigins)...)
+
+		core.Use(cors.New(corsConfig))
+	}
 
 	if inFly {
 		core.RemoteIPHeaders = []string{"Fly-Client-IP"}
 	} else {
-		core.SetTrustedProxies(nil)
+		err := core.SetTrustedProxies(nil)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	core.GET("/", func(c *gin.Context) {
@@ -81,13 +113,13 @@ func New(routers api.CoreIn) *Core {
 		}{"0.0.2"})
 	})
 
-	for _, router := range routers.VersionedRouter {
+	for _, router := range in.VersionedRouter {
 		prefix := fmt.Sprintf("/v%d/%s/", router.Version, router.Prefix)
 		core.log.Info().Str("prefix", prefix).Msg("registering router prefix")
 		group := core.Group(prefix)
-		group.Use(ginutil.AnnotateRouter(router))
+		group.Use(AnnotateRouter(router))
 		router.RegisterRouter(group)
 	}
 
-	return core
+	return core, nil
 }
