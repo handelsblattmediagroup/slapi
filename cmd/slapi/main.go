@@ -17,10 +17,12 @@ func main() {
 		log.Info().Msg("detected TTY, using fancy color output")
 	}
 
+	core.SetupDefaultLoglevel()
+
 	opts := make([]fx.Option, 0)
 
 	opts = append(opts,
-		fx.WithLogger(core.NewLogger),
+		fx.WithLogger(core.NewFxLogAdapter),
 
 		fx.Provide(core.New),
 		fx.Provide(core.GetConfigDefaults),
