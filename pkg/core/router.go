@@ -93,7 +93,7 @@ func New(in In) (*Core, error) {
 		corsConfig := cors.DefaultConfig()
 		corsConfig.AllowCredentials = true
 
-		corsConfig.AllowOrigins = append(corsConfig.AllowOrigins, strings.Split(",", in.Config.AllowdOrigins)...)
+		corsConfig.AllowOrigins = append(corsConfig.AllowOrigins, strings.Split(in.Config.AllowdOrigins, ",")...)
 
 		core.Use(cors.New(corsConfig))
 	}
