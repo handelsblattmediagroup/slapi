@@ -2,18 +2,18 @@ package core
 
 import (
 	"fmt"
-	"go.uber.org/fx"
+	"github.com/gin-contrib/cors"
 	"net/http"
 	"os"
-	"strings"
 	"time"
+
+	"go.uber.org/fx"
 
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/gin-contrib/cors"
 	ginlogger "github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -41,6 +41,7 @@ type In struct {
 
 	Config          *Config
 	VersionedRouter []*VersionedRouterSpec `group:"router"`
+	CorsConfig      *cors.Config           `optional:"true"`
 	OtelTracer      trace.TracerProvider
 }
 
@@ -88,15 +89,6 @@ func New(in In) (*Core, error) {
 	core.Use(otelgin.Middleware("slapi"))
 	core.Use(ginlogger.SetLogger(logger))
 	core.Use(ErrorHandler())
-
-	if in.Config.AllowdOrigins != "" {
-		corsConfig := cors.DefaultConfig()
-		corsConfig.AllowCredentials = true
-
-		corsConfig.AllowOrigins = append(corsConfig.AllowOrigins, strings.Split(in.Config.AllowdOrigins, ",")...)
-
-		core.Use(cors.New(corsConfig))
-	}
 
 	if inFly {
 		core.RemoteIPHeaders = []string{"Fly-Client-IP"}
