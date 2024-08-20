@@ -60,6 +60,10 @@ func New(in In) (*Core, error) {
 		log:    log.With().Logger(),
 	}
 
+	if in.CorsConfig != nil {
+		core.Use(cors.New(*in.CorsConfig))
+	}
+
 	logger := ginlogger.WithLogger(func(c *gin.Context, log zerolog.Logger) zerolog.Logger {
 		start := time.Now().UTC()
 		span := trace.SpanFromContext(c.Request.Context())
