@@ -12,10 +12,6 @@ import (
 	"go.uber.org/fx"
 )
 
-type PrometheusServer struct {
-	server *http.Server
-}
-
 func NewPrometheusServer(lc fx.Lifecycle, shutdown fx.Shutdowner, c *Config) {
 	server := &http.Server{
 		Handler: promhttp.Handler(),
